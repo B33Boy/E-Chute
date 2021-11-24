@@ -1,27 +1,32 @@
-// /*
-//     MPU6050 Triple Axis Gyroscope & Accelerometer. Free fall detection.
-//     Read more: http://www.jarzebski.pl/arduino/czujniki-i-sensory/3-osiowy-zyroskop-i-akcelerometr-mpu6050.html
-//     GIT: https://github.com/jarzebski/Arduino-MPU6050
-//     Web: http://www.jarzebski.pl
-//     (c) 2014 by Korneliusz Jarzebski
-// */
 #include <Arduino.h>
 #include <Wire.h>
 #include <MPU6050.h>
+#include <Servo.h>
 
+// Angular positions for the servo
+#define START_ANGLE 90
+#define END_ANGLE 120
+
+
+// Declare global objects
 MPU6050 mpu;
+Servo servo;
 
+// Declare global variables
 boolean ledState = false;
 boolean freefallDetected = false;
 int freefallBlinkCount = 0;
+int servo_pos = 0;
+int servo_flag = 1;
 
-
-void doInt()
+// ISR that triggers when freefall is detected
+void ff_isr()
 {
   freefallBlinkCount = 0;
   freefallDetected = true;  
 }
 
+// Function to check and display the current settings of the MPU6050 sensor
 void checkSettings()
 {
   Serial.println();
@@ -98,45 +103,60 @@ void setup()
 
   mpu.setAccelPowerOnDelay(MPU6050_DELAY_3MS);
   
+  // Enable free-fall mode
   mpu.setIntFreeFallEnabled(true);
   mpu.setIntZeroMotionEnabled(false);
   mpu.setIntMotionEnabled(false);
   
+  // Digital high pass filter
   mpu.setDHPFMode(MPU6050_DHPF_5HZ);
 
-  mpu.setFreeFallDetectionThreshold(200);
-  mpu.setFreeFallDetectionDuration(2);	
+  // Set FF_THRES and FF_DUR 
+  mpu.setFreeFallDetectionThreshold(120);
+  mpu.setFreeFallDetectionDuration(1);	
   
+  // Display current IMU settings
   checkSettings();
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(3000);
-  digitalWrite(LED_BUILTIN, LOW);
+  // Attach the intterupt to an Arduino interrupt pin
+  attachInterrupt(digitalPinToInterrupt(2), ff_isr, RISING);
 
+  // Attach the servo to pin 9
+  servo.attach(9);
 
-  attachInterrupt(digitalPinToInterrupt(2), doInt, RISING);
-
-  
 }
 
 void loop()
 {
-  Vector rawAccel = mpu.readRawAccel();
+  // Checks for the freefall state 
   Activites act = mpu.readActivites();
 
-//   Serial.print(act.isFreeFall + " \n");
-  Serial.print(String(rawAccel.XAxis) + " " + String(rawAccel.YAxis) + " " + String(rawAccel.ZAxis) + " === " + String(act.isFreeFall) + "\n\n");
-  
+  Serial.print(String(act.isFreeFall));
+
+  // This block is run when the ff_isr() is triggered
   if (freefallDetected)
   {
+    // Toggle LED state
     ledState = !ledState;
-
     digitalWrite(LED_BUILTIN, ledState);
+
+  // Actuate the servo only once
+  if (servo_flag)
+  {
+    for (servo_pos = START_ANGLE; servo_pos <= END_ANGLE; servo_pos += 1) { 
+      // in steps of 1 degree
+      servo.write(servo_pos);              
+      delay(15);                       
+    }
+
+    // Set flag to 0 so that it can never run again
+    servo_flag = 0;
+  }
+
 
     freefallBlinkCount++;
 
+    // Stops blinking the LED after 20 blinks and resets the freefall state
     if (freefallBlinkCount == 20)
     {
       freefallDetected = false;
@@ -146,108 +166,6 @@ void loop()
   }
   
   delay(100);
-  
 }
-// /*
-//     MPU6050 Triple Axis Gyroscope & Accelerometer. Simple Gyroscope Example.
-//     Read more: http://www.jarzebski.pl/arduino/czujniki-i-sensory/3-osiowy-zyroskop-i-akcelerometr-mpu6050.html
-//     GIT: https://github.com/jarzebski/Arduino-MPU6050
-//     Web: http://www.jarzebski.pl
-//     (c) 2014 by Korneliusz Jarzebski
-// */
-
-// #include <Wire.h>
-// #include <MPU6050.h>
-
-// MPU6050 mpu;
-
-// void checkSettings()
-// {
-//   Serial.println();
-  
-//   Serial.print(" * Sleep Mode:        ");
-//   Serial.println(mpu.getSleepEnabled() ? "Enabled" : "Disabled");
-  
-//   Serial.print(" * Clock Source:      ");
-//   switch(mpu.getClockSource())
-//   {
-//     case MPU6050_CLOCK_KEEP_RESET:     Serial.println("Stops the clock and keeps the timing generator in reset"); break;
-//     case MPU6050_CLOCK_EXTERNAL_19MHZ: Serial.println("PLL with external 19.2MHz reference"); break;
-//     case MPU6050_CLOCK_EXTERNAL_32KHZ: Serial.println("PLL with external 32.768kHz reference"); break;
-//     case MPU6050_CLOCK_PLL_ZGYRO:      Serial.println("PLL with Z axis gyroscope reference"); break;
-//     case MPU6050_CLOCK_PLL_YGYRO:      Serial.println("PLL with Y axis gyroscope reference"); break;
-//     case MPU6050_CLOCK_PLL_XGYRO:      Serial.println("PLL with X axis gyroscope reference"); break;
-//     case MPU6050_CLOCK_INTERNAL_8MHZ:  Serial.println("Internal 8MHz oscillator"); break;
-//   }
-  
-//   Serial.print(" * Gyroscope:         ");
-//   switch(mpu.getScale())
-//   {
-//     case MPU6050_SCALE_2000DPS:        Serial.println("2000 dps"); break;
-//     case MPU6050_SCALE_1000DPS:        Serial.println("1000 dps"); break;
-//     case MPU6050_SCALE_500DPS:         Serial.println("500 dps"); break;
-//     case MPU6050_SCALE_250DPS:         Serial.println("250 dps"); break;
-//   } 
-  
-//   Serial.print(" * Gyroscope offsets: ");
-//   Serial.print(mpu.getGyroOffsetX());
-//   Serial.print(" / ");
-//   Serial.print(mpu.getGyroOffsetY());
-//   Serial.print(" / ");
-//   Serial.println(mpu.getGyroOffsetZ());
-  
-//   Serial.println();
-// }
-
-// void setup() 
-// {
-//   Serial.begin(115200);
-
-//   // Initialize MPU6050
-//   Serial.println("Initialize MPU6050");
-//   while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
-//   {
-//     Serial.println("Could not find a valid MPU6050 sensor, check wiring!");
-//     delay(500);
-//   }
-  
-//   // If you want, you can set gyroscope offsets
-//   // mpu.setGyroOffsetX(155);
-//   // mpu.setGyroOffsetY(15);
-//   // mpu.setGyroOffsetZ(15);
-  
-//   // Calibrate gyroscope. The calibration must be at rest.
-//   // If you don't want calibrate, comment this line.
-//   mpu.calibrateGyro();
-
-//   // Set threshold sensivty. Default 3.
-//   // If you don't want use threshold, comment this line or set 0.
-//   mpu.setThreshold(3);
-  
-//   // Check settings
-//   checkSettings();
-// }
-
-// void loop()
-// {
-//   Vector rawGyro = mpu.readRawGyro();
-//   Vector normGyro = mpu.readNormalizeGyro();
-
-//   Serial.print(" Xraw = ");
-//   Serial.print(rawGyro.XAxis);
-//   Serial.print(" Yraw = ");
-//   Serial.print(rawGyro.YAxis);
-//   Serial.print(" Zraw = ");
-//   Serial.println(rawGyro.ZAxis);
-
-//   Serial.print(" Xnorm = ");
-//   Serial.print(normGyro.XAxis);
-//   Serial.print(" Ynorm = ");
-//   Serial.print(normGyro.YAxis);
-//   Serial.print(" Znorm = ");
-//   Serial.println(normGyro.ZAxis);
-  
-//   delay(1000);
-// }
 
 
